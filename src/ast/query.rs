@@ -235,11 +235,17 @@ pub enum TableFactor {
         subquery: Box<Query>,
         alias: Option<TableAlias>,
     },
-    /// The inner `TableWithJoins` can have no joins only if its
-    /// `relation` is itself a `TableFactor::NestedJoin`.
-    /// Some dialects allow nesting lone `Table`/`Derived` in parens,
-    /// e.g. `FROM (mytable)`, but we don't expose the presence of these
-    /// extraneous parens in the AST.
+
+    /// `TABLE (<expr>)[ AS <alias> ]`
+    TableFunction {
+        expr: Expr,
+        alias: Option<TableAlias>,
+    },
+    /// Represents a parenthesized table factor. The SQL spec only allows a
+    /// join expression (`(foo <JOIN> bar [ <JOIN> baz ... ])`) to be nested,
+    /// possibly several times, but the parser also accepts the non-standard
+    /// nesting of bare tables (`table_with_joins.joins.is_empty()`), so the
+    /// name `NestedJoin` is a bit of misnomer.
     NestedJoin(Box<TableWithJoins>),
 }
 
@@ -273,6 +279,13 @@ impl fmt::Display for TableFactor {
                     write!(f, "LATERAL ")?;
                 }
                 write!(f, "({})", subquery)?;
+                if let Some(alias) = alias {
+                    write!(f, " AS {}", alias)?;
+                }
+                Ok(())
+            }
+            TableFactor::TableFunction { expr, alias } => {
+                write!(f, "TABLE({})", expr)?;
                 if let Some(alias) = alias {
                     write!(f, " AS {}", alias)?;
                 }
