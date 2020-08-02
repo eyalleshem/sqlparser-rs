@@ -16,6 +16,7 @@ pub mod keywords;
 mod mssql;
 mod mysql;
 mod postgresql;
+mod snowflake;
 mod sqlite;
 
 use std::any::{Any, TypeId};
@@ -26,6 +27,7 @@ pub use self::generic::GenericDialect;
 pub use self::mssql::MsSqlDialect;
 pub use self::mysql::MySqlDialect;
 pub use self::postgresql::PostgreSqlDialect;
+pub use self::snowflake::SnowflakeDialect;
 pub use self::sqlite::SQLiteDialect;
 
 /// `dialect_of!(parser is SQLiteDialect |  GenericDialect)` evaluates
@@ -49,39 +51,6 @@ pub trait Dialect: Debug + Any {
     fn is_identifier_start(&self, ch: char) -> bool;
     /// Determine if a character is a valid unquoted identifier character
     fn is_identifier_part(&self, ch: char) -> bool;
-
-    /// The name of the dialect
-    fn dialect_name(&self) -> &'static str;
-
-    /// Enable the parser to implement dialect specific functionality.
-    /// The input for this function a list dialect names.
-    /// Function will return true if the current dialect is a subset of the input.
-    ///
-    /// parser usage exmple:
-    /// `if self.dialect.is_dialect(vec!["mssql"]) {
-    ///    // some special mssql behaviour  
-    /// } else {
-    ///   // defualt bahviour
-    /// }`
-    fn is_dialect(&self, dialects: Vec<&str>) -> bool {
-        dialects.contains(&self.dialect_name())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::generic::GenericDialect;
-    use super::*;
-
-    #[test]
-    fn test_is_diaclect() {
-        let generic_dailect = GenericDialect {};
-
-        assert_eq!(generic_dailect.is_dialect(vec!["generic"]), true);
-        assert_eq!(generic_dailect.is_dialect(vec!["generic", "mssql"]), true);
-        assert_eq!(generic_dailect.is_dialect(vec!["mssql"]), false);
-        assert_eq!(generic_dailect.is_dialect(vec!["mssql", "mysql"]), false);
-    }
 }
 
 impl dyn Dialect {

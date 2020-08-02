@@ -35,8 +35,4 @@ impl Dialect for MsSqlDialect {
             || ch == '#'
             || ch == '_'
     }
-
-    fn dialect_name(&self) -> &'static str {
-        "mssql"
-    }
 }

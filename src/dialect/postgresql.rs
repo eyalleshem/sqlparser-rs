@@ -30,8 +30,4 @@ impl Dialect for PostgreSqlDialect {
             || ch == '$'
             || ch == '_'
     }
-
-    fn dialect_name(&self) -> &'static str {
-        "postgresql"
-    }
 }

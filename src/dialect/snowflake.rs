@@ -13,20 +13,19 @@
 use crate::dialect::Dialect;
 
 #[derive(Debug, Default)]
-pub struct GenericDialect;
+pub struct SnowflakeDialect;
 
-impl Dialect for GenericDialect {
+impl Dialect for SnowflakeDialect {
+    // see https://docs.snowflake.com/en/sql-reference/identifiers-syntax.html
     fn is_identifier_start(&self, ch: char) -> bool {
-        (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_' || ch == '#' || ch == '@'
+        (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'
     }
 
     fn is_identifier_part(&self, ch: char) -> bool {
         (ch >= 'a' && ch <= 'z')
             || (ch >= 'A' && ch <= 'Z')
             || (ch >= '0' && ch <= '9')
-            || ch == '@'
             || ch == '$'
-            || ch == '#'
             || ch == '_'
     }
 }
