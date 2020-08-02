@@ -2123,7 +2123,11 @@ impl<'a> Parser<'a> {
                 // is a nested join `(foo JOIN bar)`, not followed by other joins.
                 self.expect_token(&Token::RParen)?;
                 Ok(TableFactor::NestedJoin(Box::new(table_and_joins)))
+<<<<<<< HEAD
             } else if dialect_of!(self is SnowflakeDialect) {
+=======
+            } else if self.dialect.is_dialect(vec!["snowflake"]) {
+>>>>>>> support the single table in parnes with alias in snowflake by dialect
                 // Dialect-specific behavior: Snowflake diverges from the
                 // standard and most of other implementations by allowing
                 // extra parentheses not only around a join (B), but around
@@ -2138,9 +2142,13 @@ impl<'a> Parser<'a> {
                     // Snowflake also allows specifying an alias *after* parens
                     // e.g. `FROM (mytable) AS alias`
                     match &mut table_and_joins.relation {
+<<<<<<< HEAD
                         TableFactor::Derived { alias, .. }
                         | TableFactor::Table { alias, .. }
                         | TableFactor::TableFunction { alias, .. } => {
+=======
+                        TableFactor::Derived { alias, .. } | TableFactor::Table { alias, .. } => {
+>>>>>>> support the single table in parnes with alias in snowflake by dialect
                             // but not `FROM (mytable AS alias1) AS alias2`.
                             if let Some(inner_alias) = alias {
                                 return Err(ParserError::ParserError(format!(
