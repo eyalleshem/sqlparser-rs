@@ -34,4 +34,8 @@ impl Dialect for MySqlDialect {
     fn is_delimited_identifier_start(&self, ch: char) -> bool {
         ch == '`'
     }
+
+    fn dialect_name(&self) -> &'static str {
+        "mysql"
+    }
 }

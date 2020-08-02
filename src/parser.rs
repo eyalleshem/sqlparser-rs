@@ -82,24 +82,30 @@ impl fmt::Display for ParserError {
 
 impl Error for ParserError {}
 
-/// SQL Parser
-pub struct Parser {
+//TODO: remove dead_code annotation when dialect will be in use
+#[allow(dead_code)]
+pub struct Parser<'a> {
     tokens: Vec<Token>,
     /// The index of the first unprocessed token in `self.tokens`
     index: usize,
+    dialect: &'a dyn Dialect,
 }
 
-impl Parser {
+impl<'a> Parser<'a> {
     /// Parse the specified tokens
-    pub fn new(tokens: Vec<Token>) -> Self {
-        Parser { tokens, index: 0 }
+    pub fn new(tokens: Vec<Token>, dialect: &'a dyn Dialect) -> Self {
+        Parser {
+            tokens,
+            index: 0,
+            dialect,
+        }
     }
 
     /// Parse a SQL statement and produce an Abstract Syntax Tree (AST)
     pub fn parse_sql(dialect: &dyn Dialect, sql: &str) -> Result<Vec<Statement>, ParserError> {
         let mut tokenizer = Tokenizer::new(dialect, &sql);
         let tokens = tokenizer.tokenize()?;
-        let mut parser = Parser::new(tokens);
+        let mut parser = Parser::new(tokens, dialect);
         let mut stmts = Vec::new();
         let mut expecting_statement_delimiter = false;
         debug!("Parsing sql '{}'...", sql);
@@ -950,7 +956,7 @@ impl Parser {
     /// Parse a comma-separated list of 1+ items accepted by `F`
     pub fn parse_comma_separated<T, F>(&mut self, mut f: F) -> Result<Vec<T>, ParserError>
     where
-        F: FnMut(&mut Parser) -> Result<T, ParserError>,
+        F: FnMut(&mut Parser<'a>) -> Result<T, ParserError>,
     {
         let mut values = vec![];
         loop {
