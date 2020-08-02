@@ -17,6 +17,14 @@
 //! that 1) it's either standard or widely supported and 2) it can be parsed by
 //! sqlparser regardless of the chosen dialect (i.e. it doesn't conflict with
 //! dialect-specific parsing rules).
+//!
+//!
+
+#[macro_use]
+#[path = "utils/mod.rs"]
+mod utils;
+
+use utils::*;
 
 use matches::assert_matches;
 
@@ -2276,75 +2284,48 @@ fn parse_complex_join() {
 
 #[test]
 fn parse_join_nesting() {
-    fn table(name: impl Into<String>) -> TableFactor {
-        TableFactor::Table {
-            name: ObjectName(vec![Ident::new(name.into())]),
-            alias: None,
-            args: vec![],
-            with_hints: vec![],
-        }
-    }
-
-    fn join(relation: TableFactor) -> Join {
-        Join {
-            relation,
-            join_operator: JoinOperator::Inner(JoinConstraint::Natural),
-        }
-    }
-
-    macro_rules! nest {
-        ($base:expr $(, $join:expr)*) => {
-            TableFactor::NestedJoin(Box::new(TableWithJoins {
-                relation: $base,
-                joins: vec![$(join($join)),*]
-            }))
-        };
-    }
-
     let sql = "SELECT * FROM a NATURAL JOIN (b NATURAL JOIN (c NATURAL JOIN d NATURAL JOIN e)) \
                NATURAL JOIN (f NATURAL JOIN (g NATURAL JOIN h))";
     assert_eq!(
         only(&verified_only_select(sql).from).joins,
         vec![
-            join(nest!(table("b"), nest!(table("c"), table("d"), table("e")))),
-            join(nest!(table("f"), nest!(table("g"), table("h"))))
+            join(nest!(
+                table("b", None),
+                nest!(table("c", None), table("d", None), table("e", None))
+            )),
+            join(nest!(
+                table("f", None),
+                nest!(table("g", None), table("h", None))
+            ))
         ],
     );
 
     let sql = "SELECT * FROM (a NATURAL JOIN b) NATURAL JOIN c";
     let select = verified_only_select(sql);
     let from = only(select.from);
-    assert_eq!(from.relation, nest!(table("a"), table("b")));
-    assert_eq!(from.joins, vec![join(table("c"))]);
+    assert_eq!(from.relation, nest!(table("a", None), table("b", None)));
+    assert_eq!(from.joins, vec![join(table("c", None))]);
 
     let sql = "SELECT * FROM (((a NATURAL JOIN b)))";
     let select = verified_only_select(sql);
     let from = only(select.from);
-    assert_eq!(from.relation, nest!(nest!(nest!(table("a"), table("b")))));
+    assert_eq!(
+        from.relation,
+        nest!(nest!(nest!(table("a", None), table("b", None))))
+    );
     assert_eq!(from.joins, vec![]);
 
     let sql = "SELECT * FROM a NATURAL JOIN (((b NATURAL JOIN c)))";
     let select = verified_only_select(sql);
     let from = only(select.from);
-    assert_eq!(from.relation, table("a"));
+    assert_eq!(from.relation, table("a", None));
     assert_eq!(
         from.joins,
-        vec![join(nest!(nest!(nest!(table("b"), table("c")))))]
+        vec![join(nest!(nest!(nest!(
+            table("b", None),
+            table("c", None)
+        ))))]
     );
-
-    // Parenthesized table names are non-standard, but supported in Snowflake SQL
-    let sql = "SELECT * FROM (a NATURAL JOIN (b))";
-    let select = verified_only_select(sql);
-    let from = only(select.from);
-
-    assert_eq!(from.relation, nest!(table("a"), nest!(table("b"))));
-
-    // Double parentheses around table names are non-standard, but supported in Snowflake SQL
-    let sql = "SELECT * FROM (a NATURAL JOIN ((b)))";
-    let select = verified_only_select(sql);
-    let from = only(select.from);
-
-    assert_eq!(from.relation, nest!(table("a"), nest!(nest!(table("b")))));
 }
 
 #[test]
@@ -2484,26 +2465,6 @@ fn parse_derived_tables() {
                 },
                 join_operator: JoinOperator::Inner(JoinConstraint::Natural),
             }],
-        }))
-    );
-
-    // Nesting a subquery in parentheses is non-standard, but supported in Snowflake SQL
-    let sql = "SELECT * FROM ((SELECT 1) AS t)";
-    let select = verified_only_select(sql);
-    let from = only(select.from);
-
-    assert_eq!(
-        from.relation,
-        TableFactor::NestedJoin(Box::new(TableWithJoins {
-            relation: TableFactor::Derived {
-                lateral: false,
-                subquery: Box::new(verified_query("SELECT 1")),
-                alias: Some(TableAlias {
-                    name: "t".into(),
-                    columns: vec![],
-                })
-            },
-            joins: Vec::new(),
         }))
     );
 }

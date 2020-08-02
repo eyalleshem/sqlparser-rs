@@ -28,5 +28,4 @@ impl Dialect for SnowflakeDialect {
             || ch == '$'
             || ch == '_'
     }
-
 }
