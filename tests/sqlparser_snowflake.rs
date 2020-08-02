@@ -155,6 +155,7 @@ fn snowflake() -> TestedDialects {
     }
 }
 
+
 fn snowflake_and_generic() -> TestedDialects {
     TestedDialects {
         // we don't have a separate SQLite dialect, so test only the generic dialect for now
