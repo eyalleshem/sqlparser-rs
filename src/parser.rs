@@ -82,8 +82,6 @@ impl fmt::Display for ParserError {
 
 impl Error for ParserError {}
 
-//TODO: remove dead_code annotation when dialect will be in use
-#[allow(dead_code)]
 pub struct Parser<'a> {
     tokens: Vec<Token>,
     /// The index of the first unprocessed token in `self.tokens`
@@ -2066,6 +2064,7 @@ impl<'a> Parser<'a> {
     }
 
     /// A table name or a parenthesized subquery, followed by optional `[AS] alias`
+    /// A table name or a parenthesized subquery, followed by optional `[AS] alias`
     pub fn parse_table_factor(&mut self) -> Result<TableFactor, ParserError> {
         if self.parse_keyword(Keyword::LATERAL) {
             // LATERAL must always be followed by a subquery.
@@ -2104,14 +2103,56 @@ impl<'a> Parser<'a> {
             // recently consumed does not start a derived table (cases 1, 2, or 4).
             // `maybe_parse` will ignore such an error and rewind to be after the opening '('.
 
-            // Inside the parentheses we expect to find a table factor
-            // followed by some joins or another level of nesting.
-            let table_and_joins = self.parse_table_and_joins()?;
-            self.expect_token(&Token::RParen)?;
-            // The SQL spec prohibits derived and bare tables from appearing
-            // alone in parentheses. We don't enforce this as some databases
-            // (e.g. Snowflake) allow such syntax.
-            Ok(TableFactor::NestedJoin(Box::new(table_and_joins)))
+            // Inside the parentheses we expect to find an (A) table factor
+            // followed by some joins or (B) another level of nesting.
+            let mut table_and_joins = self.parse_table_and_joins()?;
+
+            if !table_and_joins.joins.is_empty() {
+                self.expect_token(&Token::RParen)?;
+                Ok(TableFactor::NestedJoin(Box::new(table_and_joins))) // (A)
+            } else if let TableFactor::NestedJoin(_) = &table_and_joins.relation {
+                // (B): `table_and_joins` (what we found inside the parentheses)
+                // is a nested join `(foo JOIN bar)`, not followed by other joins.
+                self.expect_token(&Token::RParen)?;
+                Ok(TableFactor::NestedJoin(Box::new(table_and_joins)))
+            } else if self.dialect.is_dialect(vec!["snowflake"]) {
+                // Dialect-specific behavior: Snowflake diverges from the
+                // standard and most of other implementations by allowing
+                // extra parentheses not only around a join (B), but around
+                // lone table names (e.g. `FROM (mytable [AS alias])`) and
+                // around derived tables (e.g. `FROM ((SELECT ...) [AS alias])`
+                // as well.
+                self.expect_token(&Token::RParen)?;
+
+                if let Some(outer_alias) =
+                    self.parse_optional_table_alias(keywords::RESERVED_FOR_TABLE_ALIAS)?
+                {
+                    // Snowflake also allows specifying an alias *after* parens
+                    // e.g. `FROM (mytable) AS alias`
+                    match &mut table_and_joins.relation {
+                        TableFactor::Derived { alias, .. } | TableFactor::Table { alias, .. } => {
+                            // but not `FROM (mytable AS alias1) AS alias2`.
+                            if let Some(inner_alias) = alias {
+                                return Err(ParserError::ParserError(format!(
+                                    "duplicate alias {}",
+                                    inner_alias
+                                )));
+                            }
+                            // Act as if the alias was specified normally next
+                            // to the table name: `(mytable) AS alias` ->
+                            // `(mytable AS alias)`
+                            alias.replace(outer_alias);
+                        }
+                        TableFactor::NestedJoin(_) => unreachable!(),
+                    };
+                }
+                // Do not store the extra set of parens in the AST
+                Ok(table_and_joins.relation)
+            } else {
+                // The SQL spec prohibits derived tables and bare tables from
+                // appearing alone in parentheses (e.g. `FROM (mytable)`)
+                self.expected("joined table", self.peek_token())
+            }
         } else {
             let name = self.parse_object_name()?;
             // Postgres, MSSQL: table-valued functions:
