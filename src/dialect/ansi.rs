@@ -26,4 +26,8 @@ impl Dialect for AnsiDialect {
             || (ch >= '0' && ch <= '9')
             || ch == '_'
     }
+
+    fn dialect_name(&self) -> &'static str {
+        "ansi"
+    }
 }

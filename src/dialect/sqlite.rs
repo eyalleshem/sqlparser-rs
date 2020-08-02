@@ -35,4 +35,8 @@ impl Dialect for SQLiteDialect {
     fn is_identifier_part(&self, ch: char) -> bool {
         self.is_identifier_start(ch) || (ch >= '0' && ch <= '9')
     }
+
+    fn dialect_name(&self) -> &'static str {
+        "sqllite"
+    }
 }
