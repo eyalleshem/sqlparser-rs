@@ -16,6 +16,7 @@ pub mod keywords;
 mod mssql;
 mod mysql;
 mod postgresql;
+mod snowflake;
 mod sqlite;
 
 use std::fmt::Debug;
@@ -25,6 +26,7 @@ pub use self::generic::GenericDialect;
 pub use self::mssql::MsSqlDialect;
 pub use self::mysql::MySqlDialect;
 pub use self::postgresql::PostgreSqlDialect;
+pub use self::snowflake::SnowflakeDialect;
 pub use self::sqlite::SQLiteDialect;
 
 pub trait Dialect: Debug {
