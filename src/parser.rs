@@ -2197,7 +2197,7 @@ impl<'a> Parser<'a> {
                     // Snowflake also allows specifying an alias *after* parens
                     // e.g. `FROM (mytable) AS alias`
                     match &mut table_and_joins.relation {
-                        TableFactor::Derived { alias, .. } | TableFactor::Table { alias, .. } => {
+                        TableFactor::Derived { alias, .. } | TableFactor::Table { alias, .. }  | TableFactor::TableFunction {alias, ..}=> {
                             // but not `FROM (mytable AS alias1) AS alias2`.
                             if let Some(inner_alias) = alias {
                                 return Err(ParserError::ParserError(format!(
