@@ -29,8 +29,4 @@ impl Dialect for GenericDialect {
             || ch == '#'
             || ch == '_'
     }
-
-    fn dialect_name(&self) -> &'static str {
-        "generic"
-    }
 }
