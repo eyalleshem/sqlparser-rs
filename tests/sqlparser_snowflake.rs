@@ -148,6 +148,122 @@ fn test_single_table_in_parenthesis_with_alias() {
     );
 }
 
+#[test]
+fn test_snowflake_json_path() {
+    let sql = "SELECT a:path FROM t WHERE NOT EXISTS (SELECT 1)";
+    let select = snowflake().verified_only_select(sql);
+
+    assert_eq!(
+        &Expr::JsonPath {
+            expr: Box::new(Expr::Identifier(Ident::new("a"))),
+            path: vec![JsonPathElement::SnowflakeDotNotation {
+                ident: Ident::new("path"),
+                is_first: true
+            }]
+        },
+        expr_from_projection(only(&select.projection))
+    );
+
+    let sql = "SELECT a:path::String FROM t WHERE NOT EXISTS (SELECT 1)";
+    let select = snowflake().verified_only_select(sql);
+
+    assert_eq!(
+        &Expr::Cast {
+            format: CastFormat::DoubleColon,
+            expr: Box::new(Expr::JsonPath {
+                expr: Box::new(Expr::Identifier(Ident::new("a"))),
+                path: vec![JsonPathElement::SnowflakeDotNotation {
+                    ident: Ident::new("path"),
+                    is_first: true
+                }]
+            }),
+            data_type: DataType::Custom(ObjectName(vec![Ident::new("String")]))
+        },
+        expr_from_projection(only(&select.projection))
+    );
+
+    let sql = "SELECT a:\"path\" FROM t WHERE NOT EXISTS (SELECT 1)";
+    let select = snowflake().verified_only_select(sql);
+
+    assert_eq!(
+        &Expr::JsonPath {
+            expr: Box::new(Expr::Identifier(Ident::new("a"))),
+            path: vec![JsonPathElement::SnowflakeDotNotation {
+                ident: Ident::with_quote('"', "path"),
+                is_first: true
+            }]
+        },
+        expr_from_projection(only(&select.projection))
+    );
+
+    let sql = "SELECT a:path[0] FROM t WHERE NOT EXISTS (SELECT 1)";
+    let select = snowflake().verified_only_select(sql);
+
+    assert_eq!(
+        &Expr::JsonPath {
+            expr: Box::new(Expr::Identifier(Ident::new("a"))),
+            path: vec![
+                JsonPathElement::SnowflakeDotNotation {
+                    ident: Ident::new("path"),
+                    is_first: true
+                },
+                JsonPathElement::SnowflakeArrayIndex(0),
+            ]
+        },
+        expr_from_projection(only(&select.projection))
+    );
+
+    let sql = "SELECT a[0] FROM t WHERE NOT EXISTS (SELECT 1)";
+    let select = snowflake().verified_only_select(sql);
+
+    assert_eq!(
+        &Expr::JsonPath {
+            expr: Box::new(Expr::Identifier(Ident::new("a"))),
+            path: vec![JsonPathElement::SnowflakeArrayIndex(0),]
+        },
+        expr_from_projection(only(&select.projection))
+    );
+
+    let sql = "SELECT a[0].\"path\" FROM t WHERE NOT EXISTS (SELECT 1)";
+    let select = snowflake().verified_only_select(sql);
+
+    assert_eq!(
+        &Expr::JsonPath {
+            expr: Box::new(Expr::Identifier(Ident::new("a"))),
+            path: vec![
+                JsonPathElement::SnowflakeArrayIndex(0),
+                JsonPathElement::SnowflakeDotNotation {
+                    ident: Ident::with_quote('"', "path"),
+                    is_first: false
+                },
+            ]
+        },
+        expr_from_projection(only(&select.projection))
+    );
+
+    let sql = "SELECT a['path1'][0]['path2'] FROM t WHERE NOT EXISTS (SELECT 1)";
+    let select = snowflake().verified_only_select(sql);
+
+    assert_eq!(
+        &Expr::JsonPath {
+            expr: Box::new(Expr::Identifier(Ident::new("a"))),
+            path: vec![
+                JsonPathElement::SnowflakeBracketNotation(Ident::new("path1")),
+                JsonPathElement::SnowflakeArrayIndex(0),
+                JsonPathElement::SnowflakeBracketNotation(Ident::new("path2")),
+            ]
+        },
+        expr_from_projection(only(&select.projection))
+    );
+
+    let sql = "SELECT a[0][\"path\"]::String FROM t WHERE NOT EXISTS (SELECT 1)";
+    let statemnt = snowflake().parse_sql_statements(sql);
+    assert_eq!(
+        ParserError::ParserError("Expected valid json path after \'[\' ".to_string()),
+        statemnt.unwrap_err()
+    );
+}
+
 fn snowflake() -> TestedDialects {
     TestedDialects {
         // we don't have a separate SQLite dialect, so test only the generic dialect for now

@@ -124,9 +124,7 @@ fn parse_create_table_with_defaults() {
                         options: vec![
                             ColumnOptionDef {
                                 name: None,
-                                option: ColumnOption::Default(
-                                    pg().verified_expr("CAST(now() AS TEXT)")
-                                )
+                                option: ColumnOption::Default(pg().verified_expr("now()::TEXT"))
                             },
                             ColumnOptionDef {
                                 name: None,
@@ -199,20 +197,23 @@ fn parse_create_table_from_pg_dump() {
             release_year public.year,
             active integer
         )";
-    pg().one_statement_parses_to(sql, "CREATE TABLE public.customer (\
-            customer_id INT DEFAULT nextval(CAST('public.customer_customer_id_seq' AS REGCLASS)) NOT NULL, \
+    pg().one_statement_parses_to(
+        sql,
+        "CREATE TABLE public.customer (\
+            customer_id INT DEFAULT nextval('public.customer_customer_id_seq'::REGCLASS) NOT NULL, \
             store_id SMALLINT NOT NULL, \
             first_name CHARACTER VARYING(45) NOT NULL, \
             last_name CHARACTER VARYING(45) NOT NULL, \
             info TEXT[], \
             address_id SMALLINT NOT NULL, \
             activebool BOOLEAN DEFAULT true NOT NULL, \
-            create_date DATE DEFAULT CAST(now() AS DATE) NOT NULL, \
-            create_date1 DATE DEFAULT CAST(CAST('now' AS TEXT) AS DATE) NOT NULL, \
+            create_date DATE DEFAULT now()::DATE NOT NULL, \
+            create_date1 DATE DEFAULT 'now'::TEXT::DATE NOT NULL, \
             last_update TIMESTAMP DEFAULT now(), \
             release_year public.year, \
             active INT\
-        )");
+        )",
+    );
 }
 
 #[test]

@@ -139,6 +139,39 @@ impl fmt::Display for ObjectName {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum JsonPathElement {
+    SnowflakeDotNotation { ident: Ident, is_first: bool },
+    SnowflakeArrayIndex(u64),
+    SnowflakeBracketNotation(Ident),
+}
+
+impl fmt::Display for JsonPathElement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            JsonPathElement::SnowflakeDotNotation { ident, is_first } => {
+                if *is_first {
+                    write!(f, ":{}", ident)
+                } else {
+                    write!(f, ".{}", ident)
+                }
+            }
+            JsonPathElement::SnowflakeArrayIndex(idx) => write!(f, "[{}]", idx),
+            JsonPathElement::SnowflakeBracketNotation(ident) => write!(f, "['{}']", ident),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum CastFormat {
+    /// snowflake & postgres casting (data::DATA_TYPE)
+    DoubleColon,
+    /// regular casting CASR(data AS DATA_TYPE)
+    As,
+}
+
 /// An SQL expression of any type.
 ///
 /// The parser does not distinguish between expressions of different types
@@ -194,6 +227,7 @@ pub enum Expr {
     UnaryOp { op: UnaryOperator, expr: Box<Expr> },
     /// CAST an expression to a different data type e.g. `CAST(foo AS VARCHAR(123))`
     Cast {
+        format: CastFormat,
         expr: Box<Expr>,
         data_type: DataType,
     },
@@ -235,6 +269,14 @@ pub enum Expr {
     Subquery(Box<Query>),
     /// The `LISTAGG` function `SELECT LISTAGG(...) WITHIN GROUP (ORDER BY ...)`
     ListAgg(ListAgg),
+
+    /// Json path on expression:
+    /// see: https://docs.snowflake.com/en/user-guide/querying-semistructured.html
+    /// or:  https://www.postgresql.org/docs/9.3/functions-json.html
+    JsonPath {
+        expr: Box<Expr>,
+        path: Vec<JsonPathElement>,
+    },
 }
 
 impl fmt::Display for Expr {
@@ -283,7 +325,14 @@ impl fmt::Display for Expr {
             ),
             Expr::BinaryOp { left, op, right } => write!(f, "{} {} {}", left, op, right),
             Expr::UnaryOp { op, expr } => write!(f, "{} {}", op, expr),
-            Expr::Cast { expr, data_type } => write!(f, "CAST({} AS {})", expr, data_type),
+            Expr::Cast {
+                expr,
+                data_type,
+                format,
+            } => match format {
+                CastFormat::As => write!(f, "CAST({} AS {})", expr, data_type),
+                CastFormat::DoubleColon => write!(f, "{}::{}", expr, data_type),
+            },
             Expr::Extract { field, expr } => write!(f, "EXTRACT({} FROM {})", field, expr),
             Expr::Collate { expr, collation } => write!(f, "{} COLLATE {}", expr, collation),
             Expr::Nested(ast) => write!(f, "({})", ast),
@@ -315,6 +364,13 @@ impl fmt::Display for Expr {
             Expr::Exists(s) => write!(f, "EXISTS ({})", s),
             Expr::Subquery(s) => write!(f, "({})", s),
             Expr::ListAgg(listagg) => write!(f, "{}", listagg),
+            Expr::JsonPath { expr, path } => {
+                write!(f, "{}", expr)?;
+                for path_elemnt in path {
+                    write!(f, "{}", path_elemnt)?;
+                }
+                Ok(())
+            }
         }
     }
 }

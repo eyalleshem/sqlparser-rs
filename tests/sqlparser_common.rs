@@ -921,6 +921,7 @@ fn parse_cast() {
     let select = verified_only_select(sql);
     assert_eq!(
         &Expr::Cast {
+            format: CastFormat::As,
             expr: Box::new(Expr::Identifier(Ident::new("id"))),
             data_type: DataType::BigInt
         },

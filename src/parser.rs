@@ -456,6 +456,7 @@ impl<'a> Parser<'a> {
         let data_type = self.parse_data_type()?;
         self.expect_token(&Token::RParen)?;
         Ok(Expr::Cast {
+            format: CastFormat::As,
             expr: Box::new(expr),
             data_type,
         })
@@ -706,6 +707,10 @@ impl<'a> Parser<'a> {
                 // Can only happen if `get_next_precedence` got out of sync with this function
                 _ => panic!("No infix parser for token {:?}", tok),
             }
+        } else if (Token::Colon == tok || Token::LBracket == tok)
+            && self.dialect.is_dialect(vec!["snowflake"])
+        {
+            self.parse_snowflake_json_path(expr)
         } else if Token::DoubleColon == tok {
             self.parse_pg_cast(expr)
         } else {
@@ -753,9 +758,66 @@ impl<'a> Parser<'a> {
     /// Parse a postgresql casting style which is in the form of `expr::datatype`
     pub fn parse_pg_cast(&mut self, expr: Expr) -> Result<Expr, ParserError> {
         Ok(Expr::Cast {
+            format: CastFormat::DoubleColon,
             expr: Box::new(expr),
             data_type: self.parse_data_type()?,
         })
+    }
+
+    fn parse_snowflake_json_path_inside_bracket(&mut self) -> Result<JsonPathElement, ParserError> {
+        let ret = match self.next_token() {
+            Token::SingleQuotedString(value) => {
+                Ok(JsonPathElement::SnowflakeBracketNotation(Ident::new(value)))
+            }
+            Token::Number(value) => match value.parse::<u64>() {
+                Ok(value) => Ok(JsonPathElement::SnowflakeArrayIndex(value)),
+                Err(e) => Err(ParserError::ParserError(format!(
+                    "Failed to parse array index in json path {:?}",
+                    e
+                ))),
+            },
+            _ => Err(ParserError::ParserError(
+                "Expected valid json path after '[' ".to_owned(),
+            )),
+        }?;
+
+        self.expect_token(&Token::RBracket)?;
+
+        Ok(ret)
+    }
+
+    pub fn parse_snowflake_json_path(&mut self, expr: Expr) -> Result<Expr, ParserError> {
+        self.prev_token();
+        let mut json_path: Vec<JsonPathElement> = Vec::new();
+        let mut is_first_loop = true;
+        loop {
+            let path_elemnt = match self.next_token() {
+                Token::LBracket => self.parse_snowflake_json_path_inside_bracket()?,
+                Token::Colon if is_first_loop => JsonPathElement::SnowflakeDotNotation {
+                    ident: self.parse_identifier()?,
+                    is_first: is_first_loop,
+                },
+                Token::Period if !is_first_loop => JsonPathElement::SnowflakeDotNotation {
+                    ident: self.parse_identifier()?,
+                    is_first: is_first_loop,
+                },
+                _ => {
+                    if json_path.is_empty() {
+                        return Err(ParserError::ParserError(
+                            "Failed to parse snowflake json path".to_owned(),
+                        ));
+                    } else {
+                        self.prev_token();
+                        return Ok(Expr::JsonPath {
+                            expr: Box::new(expr),
+                            path: json_path,
+                        });
+                    }
+                }
+            };
+            is_first_loop = false;
+            json_path.push(path_elemnt);
+        }
     }
 
     const UNARY_NOT_PREC: u8 = 15;
@@ -790,6 +852,7 @@ impl<'a> Parser<'a> {
             Token::Ampersand => Ok(23),
             Token::Plus | Token::Minus => Ok(Self::PLUS_MINUS_PREC),
             Token::Mult | Token::Div | Token::Mod | Token::StringConcat => Ok(40),
+            Token::Colon | Token::LBracket if self.dialect.is_dialect(vec!["snowflake"]) => Ok(45),
             Token::DoubleColon => Ok(50),
             _ => Ok(0),
         }
@@ -2063,7 +2126,6 @@ impl<'a> Parser<'a> {
         Ok(TableWithJoins { relation, joins })
     }
 
-    /// A table name or a parenthesized subquery, followed by optional `[AS] alias`
     /// A table name or a parenthesized subquery, followed by optional `[AS] alias`
     pub fn parse_table_factor(&mut self) -> Result<TableFactor, ParserError> {
         if self.parse_keyword(Keyword::LATERAL) {
