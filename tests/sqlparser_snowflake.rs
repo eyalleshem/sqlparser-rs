@@ -264,6 +264,42 @@ fn test_snowflake_json_path() {
     );
 }
 
+#[test]
+fn test_latteral_flatten() {
+    let from = get_from_section_from_select_query(
+        "select *  FROM table1 ,LATERAL FALATTEN(value) as alias1",
+    );
+
+    assert_eq!(format!("{}", from[0]), "table1");
+    assert_eq!(format!("{}", from[1]), "LATERAL FALATTEN(value) AS alias1");
+    let relation = &from[1].relation;
+
+    if let TableFactor::TableFunction {
+        lateral,
+        name,
+        args,
+        alias,
+        ..
+    } = relation
+    {
+        assert_eq!(*lateral, true);
+        assert_eq!(*name, ObjectName(vec![Ident::new("FALATTEN")]));
+        assert_eq!(
+            *args,
+            vec![FunctionArg::Unnamed(Expr::Identifier(Ident::new("value")))]
+        );
+        assert_eq!(
+            *alias,
+            Some(TableAlias {
+                name: Ident::new("alias1"),
+                columns: vec![]
+            })
+        );
+    } else {
+        panic!("LATERAL FALATTEN should parsed into table function");
+    }
+}
+
 fn snowflake() -> TestedDialects {
     TestedDialects {
         // we don't have a separate SQLite dialect, so test only the generic dialect for now

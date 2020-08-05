@@ -16,7 +16,6 @@ pub fn table(name: impl Into<String>, alias: Option<TableAlias>) -> TableFactor 
     TableFactor::Table {
         name: ObjectName(vec![Ident::new(name.into())]),
         alias,
-        args: vec![],
         with_hints: vec![],
     }
 }

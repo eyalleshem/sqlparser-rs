@@ -2129,21 +2129,80 @@ impl<'a> Parser<'a> {
         Ok(TableWithJoins { relation, joins })
     }
 
+    pub fn parse_raw_table(&mut self, is_lateral: IsLateral) -> Result<TableFactor, ParserError> {
+        let name = self.parse_object_name()?;
+        // Postgres, MSSQL: table-valued functions:
+        let args = if self.consume_token(&Token::LParen) {
+            self.parse_optional_args()?
+        } else {
+            vec![]
+        };
+        let alias = self.parse_optional_table_alias(keywords::RESERVED_FOR_TABLE_ALIAS)?;
+        // MSSQL-specific table hints:
+        let mut with_hints = vec![];
+        if self.parse_keyword(Keyword::WITH) {
+            if self.consume_token(&Token::LParen) {
+                with_hints = self.parse_comma_separated(Parser::parse_expr)?;
+                self.expect_token(&Token::RParen)?;
+            } else {
+                // rewind, as WITH may belong to the next statement's CTE
+                self.prev_token();
+            }
+        };
+
+        let lateral = match is_lateral {
+            IsLateral::Lateral => true,
+            IsLateral::NotLateral => false,
+        };
+
+        match args.is_empty() {
+            true => Ok(TableFactor::Table {
+                name,
+                alias,
+                with_hints,
+            }),
+            false => Ok(TableFactor::TableFunction {
+                lateral,
+                name,
+                args,
+                alias,
+                with_hints,
+            }),
+        }
+    }
+
     /// A table name or a parenthesized subquery, followed by optional `[AS] alias`
     pub fn parse_table_factor(&mut self) -> Result<TableFactor, ParserError> {
         if self.parse_keyword(Keyword::LATERAL) {
-            // LATERAL must always be followed by a subquery.
             if !self.consume_token(&Token::LParen) {
-                self.expected("subquery after LATERAL", self.peek_token())?;
+                if dialect_of!(self is SnowflakeDialect) {
+                    // see: https://docs.snowflake.com/en/sql-reference/constructs/join-lateral.html
+                    let table_factor = self.parse_raw_table(IsLateral::Lateral)?;
+                    match table_factor {
+                        TableFactor::TableFunction { .. } => Ok(table_factor),
+                        _ => Err(ParserError::ParserError(
+                            "Snowflake accept table function or subquery after lateral".to_owned(),
+                        )),
+                    }
+                } else {
+                    // LATERAL must always be followed by a subquery.
+                    self.expected("subquery after LATERAL", self.peek_token())
+                }
+            } else {
+                self.parse_derived_table_factor(Lateral)
             }
-            self.parse_derived_table_factor(Lateral)
         } else if self.parse_keyword(Keyword::TABLE) {
             // parse table function (SELECT * FROM TABLE (<expr>) [ AS <alias> ])
             self.expect_token(&Token::LParen)?;
-            let expr = self.parse_expr()?;
-            self.expect_token(&Token::RParen)?;
+            let args = self.parse_optional_args()?;
             let alias = self.parse_optional_table_alias(keywords::RESERVED_FOR_TABLE_ALIAS)?;
-            Ok(TableFactor::TableFunction { expr, alias })
+            Ok(TableFactor::TableFunction {
+                lateral: false,
+                name: ObjectName(vec![Ident::new(keywords::TABLE)]),
+                args,
+                alias,
+                with_hints: vec![],
+            })
         } else if self.consume_token(&Token::LParen) {
             // A left paren introduces either a derived table (i.e., a subquery)
             // or a nested join. It's nearly impossible to determine ahead of
@@ -2226,31 +2285,7 @@ impl<'a> Parser<'a> {
                 self.expected("joined table", self.peek_token())
             }
         } else {
-            let name = self.parse_object_name()?;
-            // Postgres, MSSQL: table-valued functions:
-            let args = if self.consume_token(&Token::LParen) {
-                self.parse_optional_args()?
-            } else {
-                vec![]
-            };
-            let alias = self.parse_optional_table_alias(keywords::RESERVED_FOR_TABLE_ALIAS)?;
-            // MSSQL-specific table hints:
-            let mut with_hints = vec![];
-            if self.parse_keyword(Keyword::WITH) {
-                if self.consume_token(&Token::LParen) {
-                    with_hints = self.parse_comma_separated(Parser::parse_expr)?;
-                    self.expect_token(&Token::RParen)?;
-                } else {
-                    // rewind, as WITH may belong to the next statement's CTE
-                    self.prev_token();
-                }
-            };
-            Ok(TableFactor::Table {
-                name,
-                alias,
-                args,
-                with_hints,
-            })
+            self.parse_raw_table(IsLateral::NotLateral)
         }
     }
 

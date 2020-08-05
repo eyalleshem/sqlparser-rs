@@ -223,10 +223,6 @@ pub enum TableFactor {
     Table {
         name: ObjectName,
         alias: Option<TableAlias>,
-        /// Arguments of a table-valued function, as supported by Postgres
-        /// and MSSQL. Note that deprecated MSSQL `FROM foo (NOLOCK)` syntax
-        /// will also be parsed as `args`.
-        args: Vec<FunctionArg>,
         /// MSSQL-specific `WITH (...)` hints such as NOLOCK.
         with_hints: Vec<Expr>,
     },
@@ -235,10 +231,18 @@ pub enum TableFactor {
         subquery: Box<Query>,
         alias: Option<TableAlias>,
     },
-    /// `TABLE(<expr>)[ AS <alias> ]`
+
+    /// used to support the `TABLE(<expr>)[ AS <alias> ]` that allowed by the ANSI syntax.
+    /// (https://jakewheat.github.io/sql-overview/sql-2016-foundation-grammar.html#PTF-derived-table)
+    /// IN additaion to arguments of a table-valued function, as supported by Postgres
+    /// and MSSQL and snowflake (Note that deprecated MSSQL `FROM foo (NOLOCK)` syntax
+    /// will also be parsed as `args`).
     TableFunction {
-        expr: Expr,
+        lateral: bool,
+        name: ObjectName,
+        args: Vec<FunctionArg>,
         alias: Option<TableAlias>,
+        with_hints: Vec<Expr>,
     },
     /// Represents a parenthesized table factor. The SQL spec only allows a
     /// join expression (`(foo <JOIN> bar [ <JOIN> baz ... ])`) to be nested,
@@ -254,13 +258,9 @@ impl fmt::Display for TableFactor {
             TableFactor::Table {
                 name,
                 alias,
-                args,
                 with_hints,
             } => {
                 write!(f, "{}", name)?;
-                if !args.is_empty() {
-                    write!(f, "({})", display_comma_separated(args))?;
-                }
                 if let Some(alias) = alias {
                     write!(f, " AS {}", alias)?;
                 }
@@ -283,10 +283,23 @@ impl fmt::Display for TableFactor {
                 }
                 Ok(())
             }
-            TableFactor::TableFunction { expr, alias } => {
-                write!(f, "TABLE({})", expr)?;
+            TableFactor::TableFunction {
+                lateral,
+                name,
+                args,
+                alias,
+                with_hints,
+            } => {
+                if *lateral {
+                    write!(f, "LATERAL ")?;
+                }
+                write!(f, "{}", name)?;
+                write!(f, "({})", display_comma_separated(args))?;
                 if let Some(alias) = alias {
                     write!(f, " AS {}", alias)?;
+                }
+                if !with_hints.is_empty() {
+                    write!(f, " WITH ({})", display_comma_separated(with_hints))?;
                 }
                 Ok(())
             }
