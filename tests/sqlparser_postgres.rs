@@ -551,6 +551,29 @@ fn parse_prepare() {
     );
 }
 
+#[test]
+fn test_ilike() {
+    let sql = "'a' NOT ILIKE 'b'";
+    assert_eq!(
+        pg_and_generic().verified_expr(sql),
+        Expr::BinaryOp {
+            left: Box::new(Expr::Value(Value::SingleQuotedString("a".into()))),
+            op: BinaryOperator::NotIlike,
+            right: Box::new(Expr::Value(Value::SingleQuotedString("b".into()))),
+        }
+    );
+
+    let sql = "'a' ILIKE 'b'";
+    assert_eq!(
+        pg_and_generic().verified_expr(sql),
+        Expr::BinaryOp {
+            left: Box::new(Expr::Value(Value::SingleQuotedString("a".into()))),
+            op: BinaryOperator::Ilike,
+            right: Box::new(Expr::Value(Value::SingleQuotedString("b".into()))),
+        }
+    );
+}
+
 fn pg() -> TestedDialects {
     TestedDialects {
         dialects: vec![Box::new(PostgreSqlDialect {})],

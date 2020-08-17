@@ -222,6 +222,7 @@ define_keywords!(
     HOUR,
     IDENTITY,
     IF,
+    ILIKE,
     IN,
     INDEX,
     INDICATOR,
